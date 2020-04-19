@@ -21,7 +21,7 @@ class Producer:
         topic_name,
         key_schema,
         value_schema=None,
-        num_partitions=1,
+        num_partitions1,
         num_replicas=1,
     ):
         """Initializes a Producer object with basic settings"""
@@ -31,15 +31,14 @@ class Producer:
         self.num_partitions = num_partitions
         self.num_replicas = num_replicas
 
-        #
-        #
-        # Configure the broker properties below. Make sure to reference the project README
-        # and use the Host URL for Kafka and Schema Registry!
-        #
-        #
+
+        
         self.broker_properties = {
-            "bootstrap.servers": ",".join(["PLAINTEXT://localhost:9092", "PLAINTEXT://localhost:9093", "PLAINTEXT://localhost:9094"]),
-            "schema.registry.url": "http://localhost:8081"
+            "broker.id": 0,
+            "log.dirs": "/tmp/kafka-logs",
+            "zookeeper.connect": "localhost:2181",
+            "schema.registry.url": "http://localhost:8081",
+            "bootstrap.servers": "PLAINTEXT://localhost:9092"
         }
 
         # If the topic does not already exist, try to create it
@@ -47,56 +46,52 @@ class Producer:
             self.create_topic()
             Producer.existing_topics.add(self.topic_name)
 
-        # Configure the AvroProducer
-        self.producer = AvroProducer(
-            self.broker_properties,
-            default_key_schema=key_schema,
-            default_value_schema=value_schema
+        
+        self.producer = AvroProducer({'bootstrap.servers': self.broker_properties["bootstrap.servers"], 
+                                      'schema.registry.url': self.broker_properties["schema.registry.url"]},
+        default_key_schema=self.key_schema, default_value_schema=self.value_schema
         )
 
     def create_topic(self):
         """Creates the producer topic if it does not already exist"""
-        logger.info("Creating topic %s", self.topic_name)
-        client = AdminClient(
-            {"bootstrap.servers": self.broker_properties["bootstrap.servers"]}
-        )
+        #
+        #
+        # TODO: Write code that creates the topic for this producer if it does not already exist on
+        # the Kafka Broker.
+        #
+        #
         
-        # Check if the topic is already created
-        topic_exsists = self.check_topic_exists(client, self.topic_name)
+        client = AdminClient({'bootstrap.servers': self.broker_properties["bootstrap.servers"]})
+        topic_meta = client.list_topics()
         
-        if (topic_exsists):
-            logger.info("Topic %s already exist", self.topic_name)
-            return
-
-        logger.info(
-            "Creating topic %s with %s partitions and %s replicas",
-            self.topic_name, self.num_partitions, self.num_replicas
-        )
-
-        responses = client.create_topics([
-            NewTopic(self.topic_name, self.num_partitions, self.num_replicas)
-        ])
-
-        for topic, response in responses.items():
-            try:
-                response.result()
-                logger.info("Topic created")
-            except Exception as e:
-                logger.fatal("Failed creating topic %s: %s", topic, e)
-    
-    def close(self):
-        """Prepares the producer for exit by cleaning up the producer"""
-        if self.producer is not None:
-            logger.debug("Flushing producer")
-            self.producer.flush()
+        if topic_meta.topics.get(self.topic_name) is None:
+            
+            newTopic = NewTopic(
+                topic=self.topic_name, 
+                num_partitions=self.num_partitions, 
+                replication_factor=self.num_replicas,
+                config={
+                    "cleanup.policy": "compaction",
+                    "compression.type": "lz4",        
+                    "delete.retention.ms": 100,
+                    "file.delete.delay.ms": 100
+                }
+            )
+            client.create_topics([newTopic])
+        
+        # logger.info("topic creation kafka integration incomplete - skipping")
 
     def time_millis(self):
-        """Use this function to get the key for Kafka Events"""
         return int(round(time.time() * 1000))
-    
-    def check_topic_exists(self, client, topic_name):
-        """Checks if the given topic exists"""
-        # Requesting metadata from cluster with max response_time=5 before timing out
-        topic_metadata = client.list_topics(timeout=5)
-        topics = topic_metadata.topics
-        return topic_name in topics
+
+    def close(self):
+        """Prepares the producer for exit by cleaning up the producer"""
+        #
+        #
+        # TODO: Write cleanup code for the Producer here
+        #
+        #
+        if self.producer is not None:
+            self.producer.flush()
+        
+        # logger.info("producer close incomplete - skipping")
